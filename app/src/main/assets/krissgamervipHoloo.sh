@@ -18,7 +18,7 @@ fi
 
 # Primera operacion como root: copiar el APK al directorio del juego.
 echo "[OK] Copiando como root (UID 0)..."
-if ! cp /data/local/tmp/split_asset_pack_install_time.apk /data/user/0/com.dts.freefireth/files/; then
+if ! cp /data/local/tmp/split_asset_pack_install_time.apk /data/data/com.dts.freefireth/files; then
     echo "[ERRO] Nao foi possivel copiar split_asset_pack_install_time.apk."
     exit 1
 fi
