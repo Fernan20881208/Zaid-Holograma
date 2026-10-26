@@ -5,10 +5,16 @@ import android.app.AlertDialog
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
+import android.Manifest
+import android.net.Uri
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
+import android.os.Build
+import android.os.Environment
+import android.provider.Settings
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -36,6 +42,7 @@ class MainActivity : Activity() {
 
     private lateinit var screenHost: LinearLayout
     private var rootStatus: TextView? = null
+    private var storageStatus: TextView? = null
     private var logsView: TextView? = null
     private var terminalView: TextView? = null
     private var terminalInput: EditText? = null
@@ -154,7 +161,26 @@ class MainActivity : Activity() {
         rootStatus = label("Comprobando acceso root…", 13f, muted, false)
         statusCard.addView(rootStatus)
         statusCard.addView(button("Verificar root", false) { verifyRoot() }, LinearLayout.LayoutParams(-1, dp(42)))
-        col.addView(statusCard, marginParams(14))
+        col.addView(statusCard, marginParams(10))
+
+        val storageCard = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(14), dp(12), dp(14), dp(12))
+            background = rounded(Color.WHITE, 18, lineColor)
+        }
+        storageCard.addView(label("Acceso al almacenamiento", 14f, ink, true))
+        storageCard.addView(label("El permiso de Android permite gestionar archivos compartidos; la terminal root puede comprobar el acceso a rutas protegidas.", 11f, muted, false).apply {
+            setPadding(0, dp(3), 0, dp(5))
+        })
+        storageStatus = label(storagePermissionSummary(), 12f, muted, true)
+        storageCard.addView(storageStatus)
+        storageCard.addView(button("Conceder acceso a todos los archivos", true) {
+            requestStorageAccess()
+        }, LinearLayout.LayoutParams(-1, dp(42)).apply { topMargin = dp(7) })
+        storageCard.addView(button("Probar almacenamiento mediante root", false) {
+            verifyStorageAccess()
+        }, LinearLayout.LayoutParams(-1, dp(42)).apply { topMargin = dp(6) })
+        col.addView(storageCard, marginParams(14))
 
         col.addView(label("Acciones del script", 18f, ink, true), marginParams(8))
         col.addView(actionCard("1 · Guardar copia original", "Crea el respaldo si todavía no existe.") {
@@ -268,6 +294,100 @@ class MainActivity : Activity() {
             rootStatus?.text = if (isRoot) "Root disponible · uid=0" else "Root no concedido o su no disponible"
             rootStatus?.setTextColor(if (isRoot) Color.rgb(18, 137, 85) else Color.rgb(190, 75, 65))
         }
+    }
+
+    private fun storagePermissionSummary(): String {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            if (Environment.isExternalStorageManager()) {
+                "Permiso de todos los archivos concedido"
+            } else {
+                "Pendiente: habilítalo en Ajustes de Android"
+            }
+        } else {
+            val readOk = checkSelfPermission(Manifest.permission.READ_EXTERNAL_STORAGE) == android.content.pm.PackageManager.PERMISSION_GRANTED
+            val writeOk = Build.VERSION.SDK_INT < Build.VERSION_CODES.M ||
+                checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) == android.content.pm.PackageManager.PERMISSION_GRANTED
+            if (readOk && writeOk) "Permisos de archivos concedidos"
+            else "Pendiente: concede lectura y escritura de archivos"
+        }
+    }
+
+    private fun requestStorageAccess() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            if (Environment.isExternalStorageManager()) {
+                toast("El permiso de todos los archivos ya está concedido")
+                updateStorageStatus()
+                return
+            }
+            try {
+                startActivity(
+                    Intent(
+                        Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                        Uri.parse("package:$packageName")
+                    )
+                )
+            } catch (_: Exception) {
+                try {
+                    startActivity(Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION))
+                } catch (e: Exception) {
+                    addLog("[ERROR] No se pudo abrir los ajustes de almacenamiento: " + (e.message ?: "sin detalle"))
+                    toast("Abre Ajustes > Acceso especial > Gestionar todos los archivos")
+                }
+            }
+        } else {
+            val missing = mutableListOf<String>()
+            if (checkSelfPermission(Manifest.permission.READ_EXTERNAL_STORAGE) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                missing.add(Manifest.permission.READ_EXTERNAL_STORAGE)
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M &&
+                checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                missing.add(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+            }
+            if (missing.isEmpty()) {
+                updateStorageStatus()
+                toast("Permisos de almacenamiento concedidos")
+            } else {
+                requestPermissions(missing.toTypedArray(), 2301)
+            }
+        }
+    }
+
+    private fun updateStorageStatus() {
+        storageStatus?.text = storagePermissionSummary()
+        val ok = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            Environment.isExternalStorageManager()
+        } else {
+            checkSelfPermission(Manifest.permission.READ_EXTERNAL_STORAGE) == android.content.pm.PackageManager.PERMISSION_GRANTED &&
+                (Build.VERSION.SDK_INT < Build.VERSION_CODES.M ||
+                    checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) == android.content.pm.PackageManager.PERMISSION_GRANTED)
+        }
+        storageStatus?.setTextColor(if (ok) Color.rgb(18, 137, 85) else Color.rgb(190, 75, 65))
+    }
+
+    private fun verifyStorageAccess() {
+        val command = "id -u\n" +
+            "echo '[CHECK] Directorios principales'\n" +
+            "ls -ld /data /storage /storage/emulated/0 2>&1\n" +
+            "echo '[CHECK] Lectura de almacenamiento compartido'\n" +
+            "if [ -r /storage/emulated/0 ]; then echo '[OK] /storage/emulated/0 es legible'; else echo '[ERROR] Sin lectura de /storage/emulated/0'; fi\n" +
+            "echo '[CHECK] Escritura de almacenamiento compartido'\n" +
+            "if [ -w /storage/emulated/0 ]; then echo '[OK] /storage/emulated/0 informa escritura permitida'; else echo '[AVISO] El punto de montaje no anuncia escritura'; fi\n" +
+            "echo '[CHECK] Primeros elementos visibles'\n" +
+            "ls -A /storage/emulated/0 2>&1 | head -n 20\n" +
+            "echo '[CHECK] Archivo del script y destino de Free Fire'\n" +
+            "ls -l /data/local/tmp/krissgamervipHoloo.sh /data/user/0/com.dts.freefireth/files/split_asset_pack_install_time.apk.pdcache 2>&1"
+        executeRoot("Verificación de almacenamiento por root", command)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        updateStorageStatus()
+    }
+
+    @Deprecated("Deprecated in Android API; retained for permission result handling")
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == 2301) updateStorageStatus()
     }
 
     private fun runScriptAction(action: Int) {
