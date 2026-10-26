@@ -32,18 +32,9 @@ Descarga el archivo al espacio privado de la app, calcula SHA-256 y usa root par
 Después se verifica el tamaño y, cuando `sha256sum` está disponible, el SHA-256 del destino. El recurso publicado actualmente tiene un tamaño aproximado de 295 MiB, por lo que la app necesita espacio libre suficiente tanto para la copia temporal como para el archivo de destino. La operación no copia el archivo a la carpeta privada de Free Fire ni ejecuta scripts automáticamente. Si el recurso se elimina, cambia de nombre o se retira la release, la descarga fallará; los errores aparecen en **Registros**.
 
 
-## Terminal real de Termux
+## Termux real
 
-La pestaña **Termux** abre la aplicación oficial Termux; si está instalado Termux:Float, se intenta abrir primero para mostrar una terminal flotante sobre Holograma Zaid. Esto usa la sesión real de Termux, no la consola simplificada que tenía la app. No se envían comandos automáticamente. Para dar permisos root a Termux, autorízalo desde el gestor root cuando lo solicite. Las páginas oficiales son [Termux en F-Droid](https://f-droid.org/packages/com.termux/) y [Termux:Float](https://f-droid.org/packages/com.termux.window/).
+La pestaña **Termux** abre la aplicación oficial Termux instalada en el dispositivo. La pestaña **Registros** sigue mostrando los mensajes internos de Holograma Zaid; ya no hay una consola incrustada en la app. Instala Termux desde [F-Droid](https://f-droid.org/packages/com.termux/) si todavía no lo tienes.
 
+El cambio de esta versión sustituye la pantalla de terminal integrada por el lanzador de Termux; no cambia por sí solo el mecanismo con el que las acciones del script escriben sus registros.
 
-## Terminal integrada de Termux
-
-La versión 1.4.0 incorpora la vista oficial `com.termux:terminal-view:0.118.0` dentro de la pantalla **Terminal**; no abre una Activity externa ni necesita Termux:Float. La vista usa una sesión PTY y, si existe `/data/data/com.termux/files/usr/bin/bash`, intenta iniciar el bash y los paquetes de la instalación Termux existente bajo `su`. Si no detecta esa instalación, abre una shell root de Android en la misma vista y lo informa en pantalla. Incluye teclas rápidas para Esc, Tab, Ctrl+C/Ctrl+D, flechas y Ctrl+L.
-
-La biblioteca de terminal de Termux es GPLv3-only y procede de [termux/termux-app](https://github.com/termux/termux-app), versión 0.118.0; consulta su [licencia](https://github.com/termux/termux-app/blob/v0.118.0/LICENSE.md) y las obligaciones aplicables al redistribuir el APK.
-
-
-## Corrección de terminal integrada (1.4.1)
-
-La sesión PTY incluye ahora `sh` como `argv[0]` y pasa `-c` como opción del shell. Sin ese primer argumento, el shell podía interpretar `-c` como nombre del proceso y terminar con código 127 antes de abrir la sesión.
