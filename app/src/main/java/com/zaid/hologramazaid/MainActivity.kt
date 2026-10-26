@@ -26,6 +26,11 @@ import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import java.io.BufferedReader
+import java.io.FileInputStream
+import java.io.IOException
+import java.net.HttpURLConnection
+import java.net.URL
+import java.security.MessageDigest
 import java.io.File
 import java.io.InputStreamReader
 import java.text.SimpleDateFormat
@@ -43,6 +48,7 @@ class MainActivity : Activity() {
     private lateinit var screenHost: LinearLayout
     private var rootStatus: TextView? = null
     private var storageStatus: TextView? = null
+    private var downloadStatus: TextView? = null
     private var logsView: TextView? = null
     private var terminalView: TextView? = null
     private var terminalInput: EditText? = null
@@ -180,9 +186,25 @@ class MainActivity : Activity() {
         storageCard.addView(button("Probar almacenamiento mediante root", false) {
             verifyStorageAccess()
         }, LinearLayout.LayoutParams(-1, dp(42)).apply { topMargin = dp(6) })
-        col.addView(storageCard, marginParams(14))
+        col.addView(storageCard, marginParams(12))
 
-        col.addView(label("Acciones del script", 18f, ink, true), marginParams(8))
+        val downloadCard = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(14), dp(12), dp(14), dp(12))
+            background = rounded(Color.WHITE, 18, lineColor)
+        }
+        downloadCard.addView(label("Descarga desde MediaFire", 14f, ink, true))
+        downloadCard.addView(label("Descarga el archivo, calcula su SHA-256 y lo guarda en /data/local/tmp. No sobrescribe archivos del juego ni ejecuta scripts automáticamente.", 11f, muted, false).apply {
+            setPadding(0, dp(3), 0, dp(5))
+        })
+        downloadStatus = label("Archivo no descargado por esta versión.", 12f, muted, true)
+        downloadCard.addView(downloadStatus)
+        downloadCard.addView(button("Descargar y verificar APK", true) {
+            downloadMediaFire()
+        }, LinearLayout.LayoutParams(-1, dp(44)).apply { topMargin = dp(7) })
+        col.addView(downloadCard, marginParams(14))
+
+        col.addView(label("Acciones del script integrado", 18f, ink, true), marginParams(8))
         col.addView(actionCard("1 · Guardar copia original", "Crea el respaldo si todavía no existe.") {
             runScriptAction(1)
         }, marginParams(8))
@@ -363,6 +385,156 @@ class MainActivity : Activity() {
         }
         storageStatus?.setTextColor(if (ok) Color.rgb(18, 137, 85) else Color.rgb(190, 75, 65))
     }
+
+    private val mediaFireDirectUrl =
+        "https://download1346.mediafire.com/s0800mlyh20gf36eaKQesKOZYvtYXmxs_1jmcJTN9S1zT4bzbbOcu7vjBa2IioyZCc1KLASCqEhhIqdJCtlqpZyPQGkcNWYGM6eCV9TE3iksuxvUOCV8FL26bsH1VQbxWLSOOWcI-gXp5f2dGEP8fegsFXaH-Adx-2QIjfNSWpcPKQ/n8u6pdqryc6m1wk/split_asset_pack_install_time.apk"
+    private val stagedDownloadPath = "/data/local/tmp/split_asset_pack_install_time.apk"
+
+    private fun downloadMediaFire() {
+        synchronized(lock) {
+            if (running) {
+                toast("Ya hay una operación en curso")
+                return
+            }
+            running = true
+        }
+        downloadStatus?.text = "Descargando archivo de MediaFire…"
+        downloadStatus?.setTextColor(sky)
+        addLog("[DESCARGA] Inicio de descarga desde MediaFire.")
+        addLog("[DESCARGA] Destino final: " + stagedDownloadPath)
+        Thread {
+            var success = false
+            val cached = File(cacheDir, "split_asset_pack_install_time.apk.download")
+            var connection: HttpURLConnection? = null
+            try {
+                if (cached.exists() && !cached.delete()) {
+                    throw IOException("No se pudo limpiar el archivo temporal previo.")
+                }
+                connection = (URL(mediaFireDirectUrl).openConnection() as HttpURLConnection).apply {
+                    instanceFollowRedirects = true
+                    connectTimeout = 30000
+                    readTimeout = 60000
+                    requestMethod = "GET"
+                    setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/120 Mobile Safari/537.36")
+                    setRequestProperty("Accept", "application/octet-stream, application/vnd.android.package-archive, */*")
+                }
+                val httpCode = connection.responseCode
+                val contentType = connection.contentType ?: "desconocido"
+                val declaredBytes = connection.contentLengthLong
+                addLog("[DESCARGA] HTTP " + httpCode + " · tipo=" + contentType + " · tamaño declarado=" + declaredBytes)
+                if (httpCode !in 200..299) {
+                    throw IOException("MediaFire respondió HTTP " + httpCode)
+                }
+                if (contentType.lowercase(Locale.ROOT).contains("text/html")) {
+                    throw IOException("MediaFire devolvió HTML en lugar del APK; el enlace directo podría haber caducado.")
+                }
+                var received = 0L
+                var nextReport = 25L * 1024L * 1024L
+                connection.inputStream.use { input ->
+                    cached.outputStream().buffered().use { output ->
+                        val buffer = ByteArray(64 * 1024)
+                        while (true) {
+                            val n = input.read(buffer)
+                            if (n < 0) break
+                            if (n == 0) continue
+                            output.write(buffer, 0, n)
+                            received += n
+                            if (received >= nextReport) {
+                                addLog("[DESCARGA] Recibidos " + (received / (1024 * 1024)) + " MiB.")
+                                runOnUiThread {
+                                    downloadStatus?.text = "Descargados " + (received / (1024 * 1024)) + " MiB…"
+                                }
+                                nextReport += 25L * 1024L * 1024L
+                            }
+                        }
+                        output.flush()
+                    }
+                }
+                val downloadedBytes = cached.length()
+                if (downloadedBytes < 1024L * 1024L) {
+                    throw IOException("El archivo descargado es demasiado pequeño (" + downloadedBytes + " bytes).")
+                }
+                if (declaredBytes > 0 && downloadedBytes != declaredBytes) {
+                    throw IOException("Descarga incompleta: se esperaban " + declaredBytes + " bytes y llegaron " + downloadedBytes + ".")
+                }
+                val sourceSha = sha256File(cached)
+                addLog("[DESCARGA] Descarga completa: " + downloadedBytes + " bytes.")
+                addLog("[SHA-256] Origen: " + sourceSha)
+                addLog("[ROOT] Copiando el archivo descargado a " + stagedDownloadPath)
+                val cachePath = shellQuote(cached.absolutePath)
+                val targetPath = shellQuote(stagedDownloadPath)
+                val rootCommand =
+                    "set -e; mkdir -p /data/local/tmp; " +
+                    "cp -f " + cachePath + " " + targetPath + "; " +
+                    "chmod 600 " + targetPath + "; " +
+                    "if command -v sha256sum >/dev/null 2>&1; then " +
+                    "echo STAGED_SHA=\$(sha256sum " + targetPath + " 2>/dev/null | awk '{print \$1}'); " +
+                    "elif toybox sha256sum " + targetPath + " >/dev/null 2>&1; then " +
+                    "echo STAGED_SHA=\$(toybox sha256sum " + targetPath + " 2>/dev/null | awk '{print \$1}'); " +
+                    "else echo STAGED_SHA=UNAVAILABLE; fi; " +
+                    "echo STAGED_SIZE=\$(wc -c < " + targetPath + " | tr -d '[:space:]')"
+                val process = ProcessBuilder("su", "-c", rootCommand).redirectErrorStream(true).start()
+                val rootOutput = StringBuilder()
+                BufferedReader(InputStreamReader(process.inputStream)).use { reader ->
+                    while (true) {
+                        val line = reader.readLine() ?: break
+                        rootOutput.append(line).append('\n')
+                        addLog("[ROOT] " + line)
+                    }
+                }
+                val rootCode = process.waitFor()
+                if (rootCode != 0) {
+                    throw IOException("No se pudo guardar en /data/local/tmp; su terminó con código " + rootCode + ".")
+                }
+                val stagedSize = Regex("STAGED_SIZE=(\\d+)").find(rootOutput.toString())?.groupValues?.get(1)?.toLongOrNull()
+                val stagedSha = Regex("STAGED_SHA=([0-9a-fA-F]{64})").find(rootOutput.toString())?.groupValues?.get(1)
+                if (stagedSize != downloadedBytes) {
+                    throw IOException("La verificación del tamaño copiado falló. Esperado=" + downloadedBytes + ", copiado=" + stagedSize)
+                }
+                if (stagedSha != null && !stagedSha.equals(sourceSha, ignoreCase = true)) {
+                    throw IOException("El SHA-256 no coincide después de copiar a /data/local/tmp.")
+                }
+                addLog("[OK] Archivo guardado en " + stagedDownloadPath)
+                addLog("[OK] Tamaño verificado: " + downloadedBytes + " bytes.")
+                if (stagedSha != null) addLog("[OK] SHA-256 del destino coincide.")
+                else addLog("[AVISO] sha256sum no está disponible en el shell; se verificó el tamaño.")
+                addLog("[INFO] No se modificó la carpeta privada del juego ni se ejecutaron scripts.")
+                success = true
+                cached.delete()
+            } catch (e: Exception) {
+                addLog("[ERROR] Descarga/validación fallida: " + (e.message ?: e.javaClass.simpleName))
+                addLog("[INFO] El archivo temporal, si existe, permanece en: " + cached.absolutePath)
+            } finally {
+                connection?.disconnect()
+                runOnUiThread {
+                    synchronized(lock) { running = false }
+                    downloadStatus?.text = if (success) {
+                        "Descargado y verificado: /data/local/tmp/split_asset_pack_install_time.apk"
+                    } else {
+                        "No se completó; revisa Registros."
+                    }
+                    downloadStatus?.setTextColor(if (success) Color.rgb(18, 137, 85) else Color.rgb(190, 75, 65))
+                    addLog(if (success) "[FIN] Descarga completada correctamente." else "[FIN] Operación de descarga finalizada con error.")
+                    updateLogViews()
+                }
+            }
+        }.start()
+    }
+
+    private fun sha256File(file: File): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        FileInputStream(file).use { input ->
+            val buffer = ByteArray(128 * 1024)
+            while (true) {
+                val count = input.read(buffer)
+                if (count < 0) break
+                if (count > 0) digest.update(buffer, 0, count)
+            }
+        }
+        return digest.digest().joinToString("") { "%02x".format(it) }
+    }
+
+    private fun shellQuote(value: String): String = "'" + value.replace("'", "'\\''") + "'"
 
     private fun verifyStorageAccess() {
         val command = "id -u\n" +
