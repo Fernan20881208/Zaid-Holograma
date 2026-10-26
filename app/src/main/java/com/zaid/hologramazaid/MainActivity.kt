@@ -19,6 +19,9 @@ import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
+import android.view.KeyEvent
+import android.view.MotionEvent
+import android.view.inputmethod.InputMethodManager
 import android.widget.EditText
 import android.widget.ImageView
 import android.widget.LinearLayout
@@ -36,6 +39,11 @@ import java.io.InputStreamReader
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import com.termux.terminal.TerminalEmulator
+import com.termux.terminal.TerminalSession
+import com.termux.terminal.TerminalSessionClient
+import com.termux.view.TerminalView
+import com.termux.view.TerminalViewClient
 
 class MainActivity : Activity() {
     private val sky = Color.rgb(21, 158, 235)
@@ -56,6 +64,100 @@ class MainActivity : Activity() {
     private val logBuffer = StringBuilder()
     private val logFile by lazy { File(filesDir, "holograma-zaid.log") }
     private val remoteScript = "/data/local/tmp/krissgamervipHoloo.sh"
+    private var embeddedTerminalView: TerminalView? = null
+    private var embeddedTerminalStatus: TextView? = null
+    private var embeddedTermSession: TerminalSession? = null
+
+    private val embeddedSessionClient = object : TerminalSessionClient {
+        override fun onTextChanged(changedSession: TerminalSession) {
+            embeddedTerminalView?.onScreenUpdated()
+        }
+        override fun onTitleChanged(updatedSession: TerminalSession) {
+            val title = updatedSession.title
+            if (!title.isNullOrBlank()) runOnUiThread {
+                embeddedTerminalStatus?.text = "Sesión integrada · " + title
+            }
+        }
+        override fun onSessionFinished(finishedSession: TerminalSession) {
+            runOnUiThread {
+                addLog("[TERMUX] La shell integrada finalizó con código " + finishedSession.getExitStatus())
+                embeddedTerminalStatus?.text = "La shell finalizó. Vuelve a entrar en Terminal para iniciar otra sesión."
+            }
+        }
+        override fun onCopyTextToClipboard(session: TerminalSession, text: String) {
+            val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            clipboard.setPrimaryClip(ClipData.newPlainText("Terminal integrada", text))
+            toast("Texto copiado")
+        }
+        override fun onPasteTextFromClipboard(session: TerminalSession) {
+            try {
+                val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                val clip = clipboard.primaryClip ?: return
+                if (clip.itemCount <= 0) return
+                val text = clip.getItemAt(0).coerceToText(this@MainActivity)?.toString() ?: return
+                session.getEmulator()?.paste(text)
+            } catch (e: Exception) {
+                addLog("[TERMUX] No se pudo pegar desde el portapapeles: " + (e.message ?: e.javaClass.simpleName))
+            }
+        }
+        override fun onBell(session: TerminalSession) { }
+        override fun onColorsChanged(session: TerminalSession) {
+            embeddedTerminalView?.invalidate()
+        }
+        override fun onTerminalCursorStateChange(state: Boolean) {
+            embeddedTerminalView?.setTerminalCursorBlinkerState(state, true)
+        }
+        override fun getTerminalCursorStyle(): Int? = TerminalEmulator.TERMINAL_CURSOR_STYLE_BLOCK
+        override fun logError(tag: String, message: String) { addLog("[TERMUX][ERROR][$tag] $message") }
+        override fun logWarn(tag: String, message: String) { addLog("[TERMUX][WARN][$tag] $message") }
+        override fun logInfo(tag: String, message: String) { }
+        override fun logDebug(tag: String, message: String) { }
+        override fun logVerbose(tag: String, message: String) { }
+        override fun logStackTraceWithMessage(tag: String, message: String, e: Exception) {
+            addLog("[TERMUX][ERROR][$tag] $message: " + e.stackTraceToString())
+        }
+        override fun logStackTrace(tag: String, e: Exception) {
+            addLog("[TERMUX][ERROR][$tag] " + e.stackTraceToString())
+        }
+    }
+
+    private val embeddedViewClient = object : TerminalViewClient {
+        override fun onScale(scale: Float): Float = scale.coerceIn(0.5f, 2.0f)
+        override fun onSingleTapUp(e: MotionEvent) {
+            val view = embeddedTerminalView ?: return
+            view.requestFocus()
+            val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+            imm.showSoftInput(view, InputMethodManager.SHOW_IMPLICIT)
+        }
+        override fun shouldBackButtonBeMappedToEscape(): Boolean = false
+        override fun shouldEnforceCharBasedInput(): Boolean = true
+        override fun shouldUseCtrlSpaceWorkaround(): Boolean = false
+        override fun isTerminalViewSelected(): Boolean = currentScreen == "terminal"
+        override fun copyModeChanged(copyMode: Boolean) { }
+        override fun onKeyDown(keyCode: Int, e: KeyEvent, session: TerminalSession): Boolean = false
+        override fun onKeyUp(keyCode: Int, e: KeyEvent): Boolean = false
+        override fun onLongPress(event: MotionEvent): Boolean = false
+        override fun readControlKey(): Boolean = false
+        override fun readAltKey(): Boolean = false
+        override fun readShiftKey(): Boolean = false
+        override fun readFnKey(): Boolean = false
+        override fun onCodePoint(codePoint: Int, ctrlDown: Boolean, session: TerminalSession): Boolean = false
+        override fun onEmulatorSet() {
+            embeddedTerminalView?.setTerminalCursorBlinkerRate(500)
+            embeddedTerminalView?.setTerminalCursorBlinkerState(true, true)
+        }
+        override fun logError(tag: String, message: String) { addLog("[TERMUX-VIEW][ERROR][$tag] $message") }
+        override fun logWarn(tag: String, message: String) { addLog("[TERMUX-VIEW][WARN][$tag] $message") }
+        override fun logInfo(tag: String, message: String) { }
+        override fun logDebug(tag: String, message: String) { }
+        override fun logVerbose(tag: String, message: String) { }
+        override fun logStackTraceWithMessage(tag: String, message: String, e: Exception) {
+            addLog("[TERMUX-VIEW][ERROR][$tag] $message: " + e.stackTraceToString())
+        }
+        override fun logStackTrace(tag: String, e: Exception) {
+            addLog("[TERMUX-VIEW][ERROR][$tag] " + e.stackTraceToString())
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -103,7 +205,7 @@ class MainActivity : Activity() {
         }
         nav.addView(button("⌂  Inicio", false) { showScreen("home") }, weightParams())
         nav.addView(button("▤  Registros", false) { showScreen("logs") }, weightParams().apply { leftMargin = dp(6) })
-        nav.addView(button(">_  Termux", false) { openTermux() }, weightParams().apply { leftMargin = dp(6) })
+        nav.addView(button(">_  Terminal", false) { showScreen("terminal") }, weightParams().apply { leftMargin = dp(6) })
         root.addView(nav)
 
         screenHost = LinearLayout(this).apply {
@@ -113,7 +215,7 @@ class MainActivity : Activity() {
         root.addView(screenHost, LinearLayout.LayoutParams(-1, 0, 1f))
         setContentView(root)
 
-        addLog("Holograma Zaid v1.3.0 iniciado.")
+        addLog("Holograma Zaid v1.4.0 iniciado.")
         addLog("Script integrado: krissgamervipHoloo.sh")
         showScreen("home")
         verifyRoot()
@@ -123,8 +225,11 @@ class MainActivity : Activity() {
         currentScreen = screen
         screenHost.removeAllViews()
         logsView = null
+        embeddedTerminalView = null
+        embeddedTerminalStatus = null
         when (screen) {
             "logs" -> screenHost.addView(buildLogsScreen(), LinearLayout.LayoutParams(-1, -1))
+            "terminal" -> screenHost.addView(buildTerminalScreen(), LinearLayout.LayoutParams(-1, -1))
             else -> screenHost.addView(buildHomeScreen(), LinearLayout.LayoutParams(-1, -1))
         }
     }
@@ -289,52 +394,128 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun openTermux() {
-        // Prefer Termux:Float so the real Termux session can remain visible over Holograma.
-        val floatIntent = packageManager.getLaunchIntentForPackage("com.termux.window")
-        if (floatIntent != null) {
-            try {
-                startActivity(floatIntent)
-                addLog("[TERMUX] Abriendo Termux:Float. La terminal se ejecuta en la app oficial.")
-                return
-            } catch (e: Exception) {
-                addLog("[TERMUX] No se pudo abrir Termux:Float: " + (e.message ?: e.javaClass.simpleName))
-            }
-        }
+    private fun buildTerminalScreen(): View {
+        val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        col.addView(label("Terminal integrada · Termux", 17f, ink, true), marginParams(3))
+        col.addView(
+            label(
+                "Emulador oficial de Termux integrado aquí. Si Termux está instalado, se usa su bash y sus paquetes con una sesión root; si no, se abre una shell root de Android en esta misma vista.",
+                10f, muted, false
+            ),
+            marginParams(5)
+        )
+        embeddedTerminalStatus = label("Preparando sesión…", 10f, sky, true)
+        col.addView(embeddedTerminalStatus, marginParams(4))
 
-        val termuxIntent = packageManager.getLaunchIntentForPackage("com.termux")
-        if (termuxIntent != null) {
-            try {
-                startActivity(termuxIntent)
-                addLog("[TERMUX] Abriendo la terminal oficial de Termux.")
-                return
-            } catch (e: Exception) {
-                addLog("[TERMUX] No se pudo abrir Termux: " + (e.message ?: e.javaClass.simpleName))
-            }
+        val terminal = TerminalView(this).apply {
+            setBackgroundColor(Color.BLACK)
+            setTextSize(14)
+            setTypeface(Typeface.MONOSPACE)
+            setTerminalViewClient(embeddedViewClient)
+            setTerminalCursorBlinkerRate(500)
+            isFocusable = true
+            isFocusableInTouchMode = true
         }
+        embeddedTerminalView = terminal
+        col.addView(terminal, LinearLayout.LayoutParams(-1, 0, 1f).apply {
+            topMargin = dp(4)
+            bottomMargin = dp(7)
+        })
 
-        AlertDialog.Builder(this)
-            .setTitle("Termux no está instalado")
-            .setMessage(
-                "Instala Termux desde una fuente oficial. Para mantener una terminal flotante sobre Holograma Zaid, instala también Termux:Float. Después vuelve a la app y pulsa Termux."
-            )
-            .setNegativeButton("Cancelar", null)
-            .setNeutralButton("Instalar Termux") { _, _ ->
-                openExternalUrl("https://f-droid.org/packages/com.termux/")
+        fun addKeyRow(keys: List<Pair<String, () -> Unit>>) {
+            val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+            keys.forEachIndexed { index, item ->
+                row.addView(
+                    button(item.first, false) { item.second.invoke() },
+                    weightParams().apply { if (index > 0) leftMargin = dp(4) }
+                )
             }
-            .setPositiveButton("Termux:Float") { _, _ ->
-                openExternalUrl("https://f-droid.org/packages/com.termux.window/")
-            }
-            .show()
+            col.addView(row, marginParams(5))
+        }
+        addKeyRow(listOf(
+            "ESC" to { writeTerminalInput("\u001b") },
+            "TAB" to { writeTerminalInput("\t") },
+            "CTRL+C" to { writeTerminalInput("\u0003") },
+            "CTRL+D" to { writeTerminalInput("\u0004") },
+            "KB" to { showTerminalKeyboard() }
+        ))
+        addKeyRow(listOf(
+            "↑" to { writeTerminalInput("\u001b[A") },
+            "↓" to { writeTerminalInput("\u001b[B") },
+            "←" to { writeTerminalInput("\u001b[D") },
+            "→" to { writeTerminalInput("\u001b[C") },
+            "CTRL+L" to { writeTerminalInput("\u000c") }
+        ))
+
+        val session = embeddedTermSession?.takeIf { it.isRunning() } ?: createEmbeddedTermuxSession().also {
+            embeddedTermSession = it
+        }
+        terminal.attachSession(session)
+        terminal.setTerminalCursorBlinkerRate(500)
+        terminal.post { terminal.requestFocus() }
+        return col
     }
 
-    private fun openExternalUrl(url: String) {
-        try {
-            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
-        } catch (e: Exception) {
-            addLog("[ERROR] No se pudo abrir el enlace: " + (e.message ?: e.javaClass.simpleName))
-            toast("No hay navegador disponible para abrir el enlace")
+    private fun createEmbeddedTermuxSession(): TerminalSession {
+        val prefix = "/data/data/com.termux/files/usr"
+        val home = "/data/data/com.termux/files/home"
+        val innerCommand = """
+            if [ -x '${prefix}/bin/bash' ]; then
+                export PREFIX='${prefix}'
+                export HOME='${home}'
+                export TMPDIR="${'$'}PREFIX/tmp"
+                export PATH="${'$'}PREFIX/bin:${'$'}PREFIX/bin/applets:/system/bin:/system/xbin:/vendor/bin"
+                export LD_LIBRARY_PATH="${'$'}PREFIX/lib:/system/lib64:/vendor/lib64"
+                export SHELL="${'$'}PREFIX/bin/bash"
+                export TERM=xterm-256color
+                export COLORTERM=truecolor
+                export LANG=C.UTF-8
+                cd "${'$'}HOME"
+                printf '\\n[Holograma Zaid] Termux disponible: bash integrado con root.\\n'
+                exec "${'$'}PREFIX/bin/bash" --login
+            else
+                export HOME='/data/local/tmp'
+                export PATH=/system/bin:/system/xbin:/vendor/bin
+                export TERM=xterm-256color
+                printf '\\n[Holograma Zaid] No se encontró el entorno Termux; usando shell root de Android.\\n'
+                exec /system/bin/sh -i
+            fi
+        """.trimIndent()
+        val wrappedCommand = "exec su -c " + shellQuote(innerCommand)
+        val environment = arrayOf(
+            "TERM=xterm-256color",
+            "COLORTERM=truecolor",
+            "LANG=C.UTF-8",
+            "PATH=/system/bin:/system/xbin:/vendor/bin",
+            "HOME=" + filesDir.absolutePath
+        )
+        addLog("[TERMUX] Creando una sesión PTY incrustada en Holograma Zaid.")
+        return TerminalSession(
+            "/system/bin/sh",
+            filesDir.absolutePath,
+            arrayOf("-c", wrappedCommand),
+            environment,
+            4000,
+            embeddedSessionClient
+        )
+    }
+
+    private fun writeTerminalInput(value: String) {
+        val session = embeddedTermSession
+        if (session == null || !session.isRunning()) {
+            toast("La terminal todavía no está lista")
+            return
         }
+        val bytes = value.toByteArray(Charsets.UTF_8)
+        session.write(bytes, 0, bytes.size)
+        embeddedTerminalView?.requestFocus()
+    }
+
+    private fun showTerminalKeyboard() {
+        val view = embeddedTerminalView ?: return
+        view.requestFocus()
+        val imm = getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+        imm.showSoftInput(view, InputMethodManager.SHOW_IMPLICIT)
     }
 
     private fun requestStorageAccess() {

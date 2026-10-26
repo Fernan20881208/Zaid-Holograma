@@ -11,8 +11,8 @@ android {
         applicationId = "com.zaid.hologramazaid"
         minSdk = 26
         targetSdk = 34
-        versionCode = 4
-        versionName = "1.3.0"
+        versionCode = 5
+        versionName = "1.4.0"
     }
 
     buildTypes {
@@ -33,4 +33,8 @@ android {
     kotlinOptions {
         jvmTarget = "17"
     }
+}
+
+dependencies {
+    implementation("com.termux:terminal-view:0.118.0")
 }

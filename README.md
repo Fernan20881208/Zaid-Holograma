@@ -35,3 +35,10 @@ Después se verifica el tamaño y, cuando `sha256sum` está disponible, el SHA-2
 ## Terminal real de Termux
 
 La pestaña **Termux** abre la aplicación oficial Termux; si está instalado Termux:Float, se intenta abrir primero para mostrar una terminal flotante sobre Holograma Zaid. Esto usa la sesión real de Termux, no la consola simplificada que tenía la app. No se envían comandos automáticamente. Para dar permisos root a Termux, autorízalo desde el gestor root cuando lo solicite. Las páginas oficiales son [Termux en F-Droid](https://f-droid.org/packages/com.termux/) y [Termux:Float](https://f-droid.org/packages/com.termux.window/).
+
+
+## Terminal integrada de Termux
+
+La versión 1.4.0 incorpora la vista oficial `com.termux:terminal-view:0.118.0` dentro de la pantalla **Terminal**; no abre una Activity externa ni necesita Termux:Float. La vista usa una sesión PTY y, si existe `/data/data/com.termux/files/usr/bin/bash`, intenta iniciar el bash y los paquetes de la instalación Termux existente bajo `su`. Si no detecta esa instalación, abre una shell root de Android en la misma vista y lo informa en pantalla. Incluye teclas rápidas para Esc, Tab, Ctrl+C/Ctrl+D, flechas y Ctrl+L.
+
+La biblioteca de terminal de Termux es GPLv3-only y procede de [termux/termux-app](https://github.com/termux/termux-app), versión 0.118.0; consulta su [licencia](https://github.com/termux/termux-app/blob/v0.118.0/LICENSE.md) y las obligaciones aplicables al redistribuir el APK.
