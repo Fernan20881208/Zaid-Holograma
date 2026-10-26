@@ -10,11 +10,19 @@ if [ "$(id -u 2>/dev/null)" -ne 0 ]; then
     exec su -c "sh \"$SCRIPT\" \"${1:-2}\""
 fi
 
-# Primera operacion: copiar el APK desde /data/local/tmp al directorio del juego.
+# Verifica nuevamente que la copia se ejecute con root (UID 0).
+if [ "$(id -u 2>/dev/null)" -ne 0 ]; then
+    echo "[ERRO] A copia precisa ser executada como root."
+    exit 1
+fi
+
+# Primera operacion como root: copiar el APK al directorio del juego.
+echo "[OK] Copiando como root (UID 0)..."
 if ! cp /data/local/tmp/split_asset_pack_install_time.apk /data/user/0/com.dts.freefireth/files/; then
     echo "[ERRO] Nao foi possivel copiar split_asset_pack_install_time.apk."
     exit 1
 fi
+echo "[OK] Copia concluida como root."
 
 # Panel unificado: primero krissgamervipHolo.sh y despues krissgamervipHoloo.sh.
 # Acciones: 1=guardar copias, 2=activar Holo + Cor Forte, 3=restaurar, 4=solo Cor Forte.
