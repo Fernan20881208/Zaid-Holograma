@@ -21,8 +21,12 @@ La terminal permite comandos arbitrarios como root. Úsala solo con comandos que
 
 ## Descarga de archivo desde MediaFire
 
-La pantalla Inicio incluye **Descargar y verificar APK**. Descarga desde el enlace directo configurado, guarda temporalmente el archivo en el espacio privado de la app, calcula SHA-256 y usa root para copiarlo a:
+La pantalla Inicio incluye **Descargar y verificar APK**. La app consulta en cada intento la página permanente configurada:
+
+`https://www.mediafire.com/file/n8u6pdqryc6m1wk/split_asset_pack_install_time.apk/file`
+
+Extrae el enlace vigente del botón de descarga o del atributo `data-scrambled-url`, sin conservar la URL temporal del servidor de descarga. Luego guarda temporalmente el archivo en el espacio privado de la app, calcula SHA-256 y usa root para copiarlo a:
 
 `/data/local/tmp/split_asset_pack_install_time.apk`
 
-Después se verifica el tamaño y, cuando `sha256sum` está disponible, el SHA-256 del destino. La operación no copia el archivo a la carpeta privada de Free Fire ni ejecuta scripts automáticamente. El enlace directo puede caducar; si la descarga devuelve HTML o un error HTTP, revisa Registros.
+Después se verifica el tamaño y, cuando `sha256sum` está disponible, el SHA-256 del destino. La operación no copia el archivo a la carpeta privada de Free Fire ni ejecuta scripts automáticamente. Si MediaFire cambia su HTML, requiere una comprobación JavaScript/captcha o devuelve HTML en lugar del archivo, revisa Registros; la resolución no puede garantizarse si MediaFire bloquea una descarga automatizada.
