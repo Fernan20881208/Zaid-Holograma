@@ -33,15 +33,61 @@ echo "[OK] Executando como root (UID 0)."
 # 2. LOCALIZAR O DIRETORIO DO FREE FIRE
 # ============================================================
 
-APP_DIR="/data/user/0/com.dts.freefireth/files"
+# Detectar el paquete y perfil Android reales
+APP_DIR=""
+FALLBACK_DIR=""
 
-if [ ! -d "$APP_DIR" ]; then
-    for candidate in /data/user/[0-9]*/com.dts.freefireth/files; do
-        if [ -d "$candidate" ]; then
-            APP_DIR="$candidate"
-            break
-        fi
+PKG_LIST="$(pm list packages 2>/dev/null | sed 's/^package://')"
+
+for pkg in $PKG_LIST; do
+    case "$pkg" in
+        *freefire*|*garena*)
+            for user_root in /data/user/* /data/user_de/* /data/data; do
+                candidate="$user_root/$pkg/files"
+                [ -d "$candidate" ] || continue
+
+                if [ -f "$candidate/split_asset_pack_install_time.apk.pdcache" ] ||
+                   [ -f "$candidate/split_asset_pack_install_time.apk" ]; then
+                    APP_DIR="$candidate"
+                    break 2
+                fi
+
+                [ -n "$FALLBACK_DIR" ] || FALLBACK_DIR="$candidate"
+            done
+            ;;
+    esac
+done
+
+# Comprobar nombres de paquete habituales
+if [ -z "$APP_DIR" ]; then
+    for pkg in com.dts.freefireth com.dts.freefiremax com.dts.freefire; do
+        for user_root in /data/user/* /data/user_de/* /data/data; do
+            candidate="$user_root/$pkg/files"
+            [ -d "$candidate" ] || continue
+
+            if [ -f "$candidate/split_asset_pack_install_time.apk.pdcache" ] ||
+               [ -f "$candidate/split_asset_pack_install_time.apk" ]; then
+                APP_DIR="$candidate"
+                break 2
+            fi
+
+            [ -n "$FALLBACK_DIR" ] || FALLBACK_DIR="$candidate"
+        done
     done
+fi
+
+[ -n "$APP_DIR" ] || APP_DIR="$FALLBACK_DIR"
+
+if [ -z "$APP_DIR" ] || [ ! -d "$APP_DIR" ]; then
+    echo "[ERROR] No se encontro la carpeta files del juego."
+    echo "[INFO] Paquetes relacionados detectados:"
+    pm list packages 2>/dev/null |
+        grep -Ei 'freefire|garena' ||
+        echo "No se detectaron paquetes relacionados."
+    exit 1
+fi
+
+echo "[OK] Directorio detectado: $APP_DIR"
 fi
 
 if [ ! -d "$APP_DIR" ]; then
