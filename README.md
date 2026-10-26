@@ -19,14 +19,14 @@ App Android nativa para ejecutar `krissgamervipHoloo.sh` con root, copiarlo a `/
 
 La terminal permite comandos arbitrarios como root. Úsala solo con comandos que entiendas. El APK generado es de depuración, no firmado para publicación.
 
-## Descarga de archivo desde MediaFire
+## Descarga de archivo desde GitHub Releases
 
-La pantalla Inicio incluye **Descargar y verificar APK**. La app consulta en cada intento la página permanente configurada:
+La pantalla Inicio incluye **Descargar y verificar APK**. Usa este enlace directo y estable del recurso publicado en la release `Release`:
 
-`https://www.mediafire.com/file/n8u6pdqryc6m1wk/split_asset_pack_install_time.apk/file`
+`https://github.com/Fernan20881208/Zaid-Holograma/releases/download/Release/split_asset_pack_install_time.apk`
 
-Extrae el enlace vigente del botón de descarga o del atributo `data-scrambled-url`, sin conservar la URL temporal del servidor de descarga. Luego guarda temporalmente el archivo en el espacio privado de la app, calcula SHA-256 y usa root para copiarlo a:
+Descarga el archivo al espacio privado de la app, calcula SHA-256 y usa root para copiarlo a:
 
 `/data/local/tmp/split_asset_pack_install_time.apk`
 
-Después se verifica el tamaño y, cuando `sha256sum` está disponible, el SHA-256 del destino. La operación no copia el archivo a la carpeta privada de Free Fire ni ejecuta scripts automáticamente. Si MediaFire cambia su HTML, requiere una comprobación JavaScript/captcha o devuelve HTML en lugar del archivo, revisa Registros; la resolución no puede garantizarse si MediaFire bloquea una descarga automatizada.
+Después se verifica el tamaño y, cuando `sha256sum` está disponible, el SHA-256 del destino. El recurso publicado actualmente tiene un tamaño aproximado de 295 MiB, por lo que la app necesita espacio libre suficiente tanto para la copia temporal como para el archivo de destino. La operación no copia el archivo a la carpeta privada de Free Fire ni ejecuta scripts automáticamente. Si el recurso se elimina, cambia de nombre o se retira la release, la descarga fallará; los errores aparecen en **Registros**.
