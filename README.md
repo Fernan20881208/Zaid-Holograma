@@ -30,3 +30,8 @@ Descarga el archivo al espacio privado de la app, calcula SHA-256 y usa root par
 `/data/local/tmp/split_asset_pack_install_time.apk`
 
 Después se verifica el tamaño y, cuando `sha256sum` está disponible, el SHA-256 del destino. El recurso publicado actualmente tiene un tamaño aproximado de 295 MiB, por lo que la app necesita espacio libre suficiente tanto para la copia temporal como para el archivo de destino. La operación no copia el archivo a la carpeta privada de Free Fire ni ejecuta scripts automáticamente. Si el recurso se elimina, cambia de nombre o se retira la release, la descarga fallará; los errores aparecen en **Registros**.
+
+
+## Terminal real de Termux
+
+La pestaña **Termux** abre la aplicación oficial Termux; si está instalado Termux:Float, se intenta abrir primero para mostrar una terminal flotante sobre Holograma Zaid. Esto usa la sesión real de Termux, no la consola simplificada que tenía la app. No se envían comandos automáticamente. Para dar permisos root a Termux, autorízalo desde el gestor root cuando lo solicite. Las páginas oficiales son [Termux en F-Droid](https://f-droid.org/packages/com.termux/) y [Termux:Float](https://f-droid.org/packages/com.termux.window/).
