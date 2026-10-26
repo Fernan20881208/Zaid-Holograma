@@ -42,3 +42,8 @@ La pestaña **Termux** abre la aplicación oficial Termux; si está instalado Te
 La versión 1.4.0 incorpora la vista oficial `com.termux:terminal-view:0.118.0` dentro de la pantalla **Terminal**; no abre una Activity externa ni necesita Termux:Float. La vista usa una sesión PTY y, si existe `/data/data/com.termux/files/usr/bin/bash`, intenta iniciar el bash y los paquetes de la instalación Termux existente bajo `su`. Si no detecta esa instalación, abre una shell root de Android en la misma vista y lo informa en pantalla. Incluye teclas rápidas para Esc, Tab, Ctrl+C/Ctrl+D, flechas y Ctrl+L.
 
 La biblioteca de terminal de Termux es GPLv3-only y procede de [termux/termux-app](https://github.com/termux/termux-app), versión 0.118.0; consulta su [licencia](https://github.com/termux/termux-app/blob/v0.118.0/LICENSE.md) y las obligaciones aplicables al redistribuir el APK.
+
+
+## Corrección de terminal integrada (1.4.1)
+
+La sesión PTY incluye ahora `sh` como `argv[0]` y pasa `-c` como opción del shell. Sin ese primer argumento, el shell podía interpretar `-c` como nombre del proceso y terminar con código 127 antes de abrir la sesión.

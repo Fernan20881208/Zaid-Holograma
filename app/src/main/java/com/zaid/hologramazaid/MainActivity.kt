@@ -493,7 +493,7 @@ class MainActivity : Activity() {
         return TerminalSession(
             "/system/bin/sh",
             filesDir.absolutePath,
-            arrayOf("-c", wrappedCommand),
+            arrayOf("sh", "-c", wrappedCommand),
             environment,
             4000,
             embeddedSessionClient
