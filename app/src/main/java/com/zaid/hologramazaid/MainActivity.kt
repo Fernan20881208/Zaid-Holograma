@@ -25,7 +25,6 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
-import android.util.Base64
 import java.io.BufferedReader
 import java.io.FileInputStream
 import java.io.IOException
@@ -194,14 +193,14 @@ class MainActivity : Activity() {
             setPadding(dp(14), dp(12), dp(14), dp(12))
             background = rounded(Color.WHITE, 18, lineColor)
         }
-        downloadCard.addView(label("Descarga desde MediaFire", 14f, ink, true))
+        downloadCard.addView(label("Descarga desde GitHub Releases", 14f, ink, true))
         downloadCard.addView(label("Descarga el archivo, calcula su SHA-256 y lo guarda en /data/local/tmp. No sobrescribe archivos del juego ni ejecuta scripts automáticamente.", 11f, muted, false).apply {
             setPadding(0, dp(3), 0, dp(5))
         })
         downloadStatus = label("Archivo no descargado por esta versión.", 12f, muted, true)
         downloadCard.addView(downloadStatus)
         downloadCard.addView(button("Descargar y verificar APK", true) {
-            downloadMediaFire()
+            downloadFromGithubRelease()
         }, LinearLayout.LayoutParams(-1, dp(44)).apply { topMargin = dp(7) })
         col.addView(downloadCard, marginParams(14))
 
@@ -387,112 +386,11 @@ class MainActivity : Activity() {
         storageStatus?.setTextColor(if (ok) Color.rgb(18, 137, 85) else Color.rgb(190, 75, 65))
     }
 
-    private val mediaFirePageUrl =
-        "https://www.mediafire.com/file/n8u6pdqryc6m1wk/split_asset_pack_install_time.apk/file"
+    private val githubReleaseDownloadUrl =
+        "https://github.com/Fernan20881208/Zaid-Holograma/releases/download/Release/split_asset_pack_install_time.apk"
     private val stagedDownloadPath = "/data/local/tmp/split_asset_pack_install_time.apk"
 
-    private fun resolveMediaFireDownloadUrl(): String {
-        var pageConnection: HttpURLConnection? = null
-        try {
-            addLog("[RESOLVER] Consultando página de MediaFire: " + mediaFirePageUrl)
-            pageConnection = (URL(mediaFirePageUrl).openConnection() as HttpURLConnection).apply {
-                instanceFollowRedirects = true
-                connectTimeout = 30000
-                readTimeout = 45000
-                requestMethod = "GET"
-                setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/120 Mobile Safari/537.36")
-                setRequestProperty("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
-                setRequestProperty("Accept-Language", "en-US,en;q=0.9")
-            }
-            val code = pageConnection.responseCode
-            addLog("[RESOLVER] Página respondió HTTP " + code)
-            if (code !in 200..299) {
-                throw IOException("MediaFire no entregó la página del archivo (HTTP " + code + ").")
-            }
-            val html = pageConnection.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
-            if (html.isBlank()) throw IOException("La página de MediaFire está vacía.")
-            addLog("[RESOLVER] HTML recibido: " + html.length + " caracteres.")
-
-            fun decodeEntities(input: String): String = input
-                .replace("&amp;", "&", ignoreCase = true)
-                .replace("&#x2F;", "/", ignoreCase = true)
-                .replace("&#47;", "/", ignoreCase = true)
-                .replace("\\u0026", "&", ignoreCase = true)
-                .replace("\\/", "/")
-                .replace("\\\\/", "/")
-                .trim()
-                .trim('"', '\'')
-
-            fun validDirectUrl(candidate: String): String? {
-                val normalized = decodeEntities(candidate)
-                val match = Regex(
-                    """https?://download\d+\.mediafire\.com/[^"'<>\\\s]+""",
-                    RegexOption.IGNORE_CASE
-                ).find(normalized)?.value ?: return null
-                return try {
-                    val parsed = URL(match)
-                    if (parsed.protocol.equals("https", true) &&
-                        parsed.host.matches(Regex("""download\d+\.mediafire\.com""", RegexOption.IGNORE_CASE))) {
-                        match
-                    } else null
-                } catch (_: Exception) {
-                    null
-                }
-            }
-
-            // Some MediaFire pages include a direct URL in the Download button.
-            val buttonTag = Regex(
-                """(?is)<a\b(?=[^>]*\bid=["']downloadButton["'])[^>]*>"""
-            ).find(html)?.value
-            if (buttonTag != null) {
-                val href = Regex("""(?is)\bhref\s*=\s*["']([^"']+)["']""")
-                    .find(buttonTag)?.groupValues?.getOrNull(1)
-                if (href != null) validDirectUrl(href)?.let {
-                    addLog("[RESOLVER] Enlace obtenido del botón de descarga.")
-                    return it
-                }
-            }
-
-            // MediaFire often base64-encodes the URL in data-scrambled-url.
-            val scrambled = Regex("""(?is)\bdata-scrambled-url\s*=\s*["']([^"']+)["']""")
-                .find(html)?.groupValues?.getOrNull(1)
-            if (!scrambled.isNullOrBlank()) {
-                val encodedValue = decodeEntities(scrambled)
-                validDirectUrl(encodedValue)?.let {
-                    addLog("[RESOLVER] Enlace directo encontrado en el atributo de descarga.")
-                    return it
-                }
-                try {
-                    val decoded = String(Base64.decode(encodedValue, Base64.DEFAULT), Charsets.UTF_8)
-                    validDirectUrl(decoded)?.let {
-                        addLog("[RESOLVER] Enlace directo resuelto desde data-scrambled-url.")
-                        return it
-                    }
-                } catch (e: Exception) {
-                    addLog("[RESOLVER] No se pudo decodificar data-scrambled-url como Base64; probando otros formatos.")
-                }
-            }
-
-            // Final fallback: inspect the page and escaped JavaScript for a MediaFire download host.
-            val normalizedHtml = decodeEntities(html)
-            validDirectUrl(normalizedHtml)?.let {
-                addLog("[RESOLVER] Enlace directo encontrado en el código de la página.")
-                return it
-            }
-            val jsEscaped = normalizedHtml.replace("\\\\/", "/").replace("\\/", "/")
-            validDirectUrl(jsEscaped)?.let {
-                addLog("[RESOLVER] Enlace directo encontrado en JavaScript.")
-                return it
-            }
-            throw IOException(
-                "No se encontró un enlace descargable en la página. Puede haber caducado, requerir JavaScript/verificación, o MediaFire cambió su HTML."
-            )
-        } finally {
-            pageConnection?.disconnect()
-        }
-    }
-
-    private fun downloadMediaFire() {
+    private fun downloadFromGithubRelease() {
         synchronized(lock) {
             if (running) {
                 toast("Ya hay una operación en curso")
@@ -500,9 +398,9 @@ class MainActivity : Activity() {
             }
             running = true
         }
-        downloadStatus?.text = "Descargando archivo de MediaFire…"
+        downloadStatus?.text = "Descargando archivo desde GitHub Releases…"
         downloadStatus?.setTextColor(sky)
-        addLog("[DESCARGA] Inicio de descarga desde MediaFire.")
+        addLog("[DESCARGA] Inicio de descarga desde GitHub Releases.")
         addLog("[DESCARGA] Destino final: " + stagedDownloadPath)
         Thread {
             var success = false
@@ -512,9 +410,8 @@ class MainActivity : Activity() {
                 if (cached.exists() && !cached.delete()) {
                     throw IOException("No se pudo limpiar el archivo temporal previo.")
                 }
-                val freshUrl = resolveMediaFireDownloadUrl()
-                addLog("[RESOLVER] URL de descarga vigente localizada; no se guardará como enlace permanente.")
-                connection = (URL(freshUrl).openConnection() as HttpURLConnection).apply {
+                addLog("[DESCARGA] URL de GitHub Releases: " + githubReleaseDownloadUrl)
+                connection = (URL(githubReleaseDownloadUrl).openConnection() as HttpURLConnection).apply {
                     instanceFollowRedirects = true
                     connectTimeout = 30000
                     readTimeout = 60000
@@ -527,10 +424,10 @@ class MainActivity : Activity() {
                 val declaredBytes = connection.contentLengthLong
                 addLog("[DESCARGA] HTTP " + httpCode + " · tipo=" + contentType + " · tamaño declarado=" + declaredBytes)
                 if (httpCode !in 200..299) {
-                    throw IOException("El servidor de MediaFire respondió HTTP " + httpCode)
+                    throw IOException("GitHub Releases respondió HTTP " + httpCode)
                 }
                 if (contentType.lowercase(Locale.ROOT).contains("text/html")) {
-                    throw IOException("MediaFire devolvió HTML en lugar del archivo; podría requerir verificación o el enlace expiró.")
+                    throw IOException("GitHub devolvió HTML en lugar del APK; verifica que el recurso de Release siga disponible.")
                 }
                 var received = 0L
                 var nextReport = 25L * 1024L * 1024L
