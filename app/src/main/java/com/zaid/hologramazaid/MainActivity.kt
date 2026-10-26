@@ -407,7 +407,7 @@ class MainActivity : Activity() {
         embeddedTerminalStatus = label("Preparando sesión…", 10f, sky, true)
         col.addView(embeddedTerminalStatus, marginParams(4))
 
-        val terminal = TerminalView(this).apply {
+        val terminal = TerminalView(this, null).apply {
             setBackgroundColor(Color.BLACK)
             setTextSize(14)
             setTypeface(Typeface.MONOSPACE)
