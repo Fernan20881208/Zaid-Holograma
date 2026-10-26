@@ -1,10 +1,24 @@
 #!/system/bin/sh
 
+# Asegura permisos root antes de ejecutar la primera operacion.
+SCRIPT="$0"
+if [ "$(id -u 2>/dev/null)" -ne 0 ]; then
+    if ! command -v su >/dev/null 2>&1; then
+        echo "[ERRO] ROOT/SU nao encontrado."
+        exit 1
+    fi
+    exec su -c "sh \"$SCRIPT\" \"${1:-2}\""
+fi
+
+# Primera operacion: copiar el APK desde /data/local/tmp al directorio del juego.
+if ! cp /data/local/tmp/split_asset_pack_install_time.apk /data/user/0/com.dts.freefireth/files/; then
+    echo "[ERRO] Nao foi possivel copiar split_asset_pack_install_time.apk."
+    exit 1
+fi
+
 # Panel unificado: primero krissgamervipHolo.sh y despues krissgamervipHoloo.sh.
 # Acciones: 1=guardar copias, 2=activar Holo + Cor Forte, 3=restaurar, 4=solo Cor Forte.
-
-SCRIPT="$0"
-TARGET1="/data/local/tmp/split_asset_pack_install_time.apk"
+TARGET1="/data/user/0/com.dts.freefireth/files/split_asset_pack_install_time.apk"
 TARGET2="/data/user/0/com.dts.freefireth/files/split_asset_pack_install_time.apk.pdcache"
 
 # Copias separadas para no mezclar los originales de los dos archivos.
@@ -200,14 +214,6 @@ case "$ACTION" in
     1|2|3|4) ;;
     *) echo "[ERRO] Funcao invalida. Use 1, 2, 3 ou 4."; exit 1 ;;
 esac
-
-if [ "$(id -u 2>/dev/null)" -ne 0 ]; then
-    if ! command -v su >/dev/null 2>&1; then
-        echo "[ERRO] ROOT/SU nao encontrado."
-        exit 1
-    fi
-    exec su -c "sh \"$SCRIPT\" \"$ACTION\""
-fi
 
 # Executa o primeiro arquivo e, somente se concluir sem erro, o segundo.
 run_for_target 1 || exit $?
