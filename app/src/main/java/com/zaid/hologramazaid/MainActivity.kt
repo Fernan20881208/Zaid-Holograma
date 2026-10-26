@@ -50,8 +50,6 @@ class MainActivity : Activity() {
     private var storageStatus: TextView? = null
     private var downloadStatus: TextView? = null
     private var logsView: TextView? = null
-    private var terminalView: TextView? = null
-    private var terminalInput: EditText? = null
     private var currentScreen = "home"
     private var running = false
     private val lock = Any()
@@ -105,7 +103,7 @@ class MainActivity : Activity() {
         }
         nav.addView(button("⌂  Inicio", false) { showScreen("home") }, weightParams())
         nav.addView(button("▤  Registros", false) { showScreen("logs") }, weightParams().apply { leftMargin = dp(6) })
-        nav.addView(button(">_  Terminal", false) { showScreen("terminal") }, weightParams().apply { leftMargin = dp(6) })
+        nav.addView(button(">_  Termux", false) { openTermux() }, weightParams().apply { leftMargin = dp(6) })
         root.addView(nav)
 
         screenHost = LinearLayout(this).apply {
@@ -115,7 +113,7 @@ class MainActivity : Activity() {
         root.addView(screenHost, LinearLayout.LayoutParams(-1, 0, 1f))
         setContentView(root)
 
-        addLog("Holograma Zaid v1.0.0 iniciado.")
+        addLog("Holograma Zaid v1.3.0 iniciado.")
         addLog("Script integrado: krissgamervipHoloo.sh")
         showScreen("home")
         verifyRoot()
@@ -125,11 +123,8 @@ class MainActivity : Activity() {
         currentScreen = screen
         screenHost.removeAllViews()
         logsView = null
-        terminalView = null
-        terminalInput = null
         when (screen) {
             "logs" -> screenHost.addView(buildLogsScreen(), LinearLayout.LayoutParams(-1, -1))
-            "terminal" -> screenHost.addView(buildTerminalScreen(), LinearLayout.LayoutParams(-1, -1))
             else -> screenHost.addView(buildHomeScreen(), LinearLayout.LayoutParams(-1, -1))
         }
     }
@@ -261,46 +256,6 @@ class MainActivity : Activity() {
         return col
     }
 
-    private fun buildTerminalScreen(): View {
-        val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        col.addView(label("Terminal root · verbose", 18f, ink, true), marginParams(5))
-        col.addView(label("Los comandos se ejecutan mediante su -c. Úsala solo con comandos que entiendas.", 11f, muted, false), marginParams(8))
-        val output = logTextView()
-        terminalView = output
-        val scroll = ScrollView(this).apply {
-            background = rounded(terminalBg, 16, terminalBg)
-            setPadding(dp(10), dp(8), dp(10), dp(8))
-            addView(output)
-        }
-        col.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
-        val input = EditText(this).apply {
-            hint = "Escribe un comando root…"
-            setTextColor(ink)
-            setHintTextColor(muted)
-            textSize = 13f
-            setSingleLine(true)
-            setPadding(dp(12), 0, dp(12), 0)
-            background = rounded(Color.WHITE, 12, lineColor)
-        }
-        terminalInput = input
-        col.addView(input, LinearLayout.LayoutParams(-1, dp(48)).apply {
-            topMargin = dp(8)
-            bottomMargin = dp(7)
-        })
-        col.addView(button("▶ Ejecutar comando", true) {
-            val command = input.text.toString().trim()
-            if (command.isEmpty()) {
-                toast("Escribe un comando primero")
-            } else {
-                addLog("$ " + command)
-                input.setText("")
-                executeRoot("Terminal", command)
-            }
-        }, LinearLayout.LayoutParams(-1, dp(45)))
-        updateLogViews()
-        return col
-    }
-
     private fun logTextView(): TextView = TextView(this).apply {
         textSize = 11f
         typeface = Typeface.MONOSPACE
@@ -331,6 +286,54 @@ class MainActivity : Activity() {
                 checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) == android.content.pm.PackageManager.PERMISSION_GRANTED
             if (readOk && writeOk) "Permisos de archivos concedidos"
             else "Pendiente: concede lectura y escritura de archivos"
+        }
+    }
+
+    private fun openTermux() {
+        // Prefer Termux:Float so the real Termux session can remain visible over Holograma.
+        val floatIntent = packageManager.getLaunchIntentForPackage("com.termux.window")
+        if (floatIntent != null) {
+            try {
+                startActivity(floatIntent)
+                addLog("[TERMUX] Abriendo Termux:Float. La terminal se ejecuta en la app oficial.")
+                return
+            } catch (e: Exception) {
+                addLog("[TERMUX] No se pudo abrir Termux:Float: " + (e.message ?: e.javaClass.simpleName))
+            }
+        }
+
+        val termuxIntent = packageManager.getLaunchIntentForPackage("com.termux")
+        if (termuxIntent != null) {
+            try {
+                startActivity(termuxIntent)
+                addLog("[TERMUX] Abriendo la terminal oficial de Termux.")
+                return
+            } catch (e: Exception) {
+                addLog("[TERMUX] No se pudo abrir Termux: " + (e.message ?: e.javaClass.simpleName))
+            }
+        }
+
+        AlertDialog.Builder(this)
+            .setTitle("Termux no está instalado")
+            .setMessage(
+                "Instala Termux desde una fuente oficial. Para mantener una terminal flotante sobre Holograma Zaid, instala también Termux:Float. Después vuelve a la app y pulsa Termux."
+            )
+            .setNegativeButton("Cancelar", null)
+            .setNeutralButton("Instalar Termux") { _, _ ->
+                openExternalUrl("https://f-droid.org/packages/com.termux/")
+            }
+            .setPositiveButton("Termux:Float") { _, _ ->
+                openExternalUrl("https://f-droid.org/packages/com.termux.window/")
+            }
+            .show()
+    }
+
+    private fun openExternalUrl(url: String) {
+        try {
+            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+        } catch (e: Exception) {
+            addLog("[ERROR] No se pudo abrir el enlace: " + (e.message ?: e.javaClass.simpleName))
+            toast("No hay navegador disponible para abrir el enlace")
         }
     }
 
@@ -651,13 +654,8 @@ class MainActivity : Activity() {
     private fun updateLogViews() {
         val snapshot = synchronized(lock) { logBuffer.toString() }
         logsView?.text = snapshot
-        terminalView?.text = snapshot
         logsView?.post {
             val p = logsView?.parent
-            if (p is ScrollView) p.post { p.fullScroll(View.FOCUS_DOWN) }
-        }
-        terminalView?.post {
-            val p = terminalView?.parent
             if (p is ScrollView) p.post { p.fullScroll(View.FOCUS_DOWN) }
         }
     }
