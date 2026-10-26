@@ -4,7 +4,7 @@
 # Acciones: 1=guardar copias, 2=activar Holo + Cor Forte, 3=restaurar, 4=solo Cor Forte.
 
 SCRIPT="$0"
-TARGET1="/data/user/0/com.dts.freefireth/files/split_asset_pack_install_time.apk"
+TARGET1="/data/local/tmp/split_asset_pack_install_time.apk"
 TARGET2="/data/user/0/com.dts.freefireth/files/split_asset_pack_install_time.apk.pdcache"
 
 # Copias separadas para no mezclar los originales de los dos archivos.
