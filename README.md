@@ -18,3 +18,11 @@ App Android nativa para ejecutar `krissgamervipHoloo.sh` con root, copiarlo a `/
 - El script original espera el paquete `com.dts.freefireth` y su archivo `.pdcache` en la ruta configurada.
 
 La terminal permite comandos arbitrarios como root. Úsala solo con comandos que entiendas. El APK generado es de depuración, no firmado para publicación.
+
+## Descarga de archivo desde MediaFire
+
+La pantalla Inicio incluye **Descargar y verificar APK**. Descarga desde el enlace directo configurado, guarda temporalmente el archivo en el espacio privado de la app, calcula SHA-256 y usa root para copiarlo a:
+
+`/data/local/tmp/split_asset_pack_install_time.apk`
+
+Después se verifica el tamaño y, cuando `sha256sum` está disponible, el SHA-256 del destino. La operación no copia el archivo a la carpeta privada de Free Fire ni ejecuta scripts automáticamente. El enlace directo puede caducar; si la descarga devuelve HTML o un error HTTP, revisa Registros.
